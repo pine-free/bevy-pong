@@ -26,6 +26,7 @@
           buildInputs = with pkgs; [
             pkg-config
             rust-bin.beta.latest.default
+            rust-analyzer
           ];
         };
       };
