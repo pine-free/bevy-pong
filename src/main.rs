@@ -6,7 +6,7 @@ use crate::{
     ball::BallVelocity,
     game_config::ArenaSize,
     input::{Action, InputConfig},
-    platform::{Platform, Player1, Player2, draw_paddle_gizmos},
+    platform::{Player1, Player2, draw_paddle_gizmos},
 };
 
 mod game_config {
@@ -59,7 +59,7 @@ mod arena {
 mod ball {
     use bevy::{ecs::query::QueryData, prelude::*};
 
-    use crate::{game_config::ArenaSize, platform::PlatformDimensions};
+    use crate::{game_config::ArenaSize, platform::PaddleDimensions};
 
     pub fn plugin(app: &mut App) {
         app.add_systems(
@@ -185,16 +185,16 @@ mod ball {
         ball: Single<BallQuery>,
         mut gizmos: Gizmos,
         mut commands: Commands,
-        paddles: Populated<(&Transform, &PlatformDimensions)>,
+        paddles: Populated<(&Transform, &PaddleDimensions)>,
     ) {
-        for (paddle_tr, PlatformDimensions(paddle_dim)) in paddles {
+        for (paddle_tr, PaddleDimensions(paddle_dim)) in paddles {
             let paddle_rect = Rect::from_center_size(Vec2::ZERO, *paddle_dim / 2.)
                 .translate(paddle_tr.translation.xy());
-            gizmos.rect_2d(
-                Isometry2d::from_translation(paddle_tr.translation.xy()),
-                *paddle_dim / 2.,
-                LinearRgba::GREEN,
-            );
+            // gizmos.rect_2d(
+            //     Isometry2d::from_translation(paddle_tr.translation.xy()),
+            //     *paddle_dim / 2.,
+            //     LinearRgba::GREEN,
+            // );
             if paddle_rect.contains(
                 ball.transform.translation.xy()
                     + ball.velocity.0
@@ -217,7 +217,7 @@ mod platform {
 
     #[derive(Clone, Copy, Debug, Component, Default)]
     #[require(Transform)]
-    pub struct Platform;
+    pub struct Paddle;
 
     #[derive(Clone, Copy, Debug, Component, Default)]
     pub struct Player1;
@@ -226,14 +226,14 @@ mod platform {
     pub struct Player2;
 
     #[derive(Clone, Copy, Debug, Component, Default)]
-    pub struct PlatformDimensions(pub Vec2);
+    pub struct PaddleDimensions(pub Vec2);
 
     pub fn platform(position: Vec2, dimensions: Vec2) -> impl Scene {
         let dim = dimensions * 2.;
         bsn! {
-            Platform
+            Paddle
             Transform::from_translation(position.extend(0.0))
-            PlatformDimensions(dim)
+            PaddleDimensions(dim)
             Mesh2d(asset_value(Rectangle::from_size(dimensions)))
             MeshMaterial2d<ColorMaterial>(asset_value(ColorMaterial::from_color(Color::WHITE)))
         }
@@ -241,16 +241,16 @@ mod platform {
 
     pub fn player_input(
         action: On<PlayerAction>,
-        mut position: Populated<&mut Transform, With<Platform>>,
+        mut position: Populated<&mut Transform, With<Paddle>>,
         speed: Single<&PaddleSpeed>,
-        dimensions: Populated<&PlatformDimensions>,
+        dimensions: Populated<&PaddleDimensions>,
         arena_size: Option<Single<&ArenaSize>>,
     ) {
         let mut self_pos = position
             .get_mut(action.event_target())
             .expect("should always be a platform");
         let PaddleSpeed(sp) = **speed;
-        let PlatformDimensions(Vec2 { y: pl_height, .. }) = dimensions
+        let PaddleDimensions(Vec2 { y: pl_height, .. }) = dimensions
             .get(action.event_target())
             .expect("must have dimensions");
 
@@ -272,7 +272,7 @@ mod platform {
 
     pub fn draw_paddle_gizmos(
         mut gizmos: Gizmos,
-        paddles: Populated<(&Transform, &PlatformDimensions)>,
+        paddles: Populated<(&Transform, &PaddleDimensions)>,
     ) {
         for (p_tr, p_dim) in paddles {
             gizmos.rect_2d(
@@ -378,12 +378,12 @@ fn setup(mut commands: Commands, arena_size: Single<&ArenaSize>) {
         Camera2d
         MainCamera
         --
-        #Platform1
+        #Player1
         Player1
         @platform::platform(vec2(-400., 0.), vec2(20., 200.))
         on(platform::player_input)
         --
-        #Platform2
+        #Player2
         Player2
         @platform::platform(vec2(400., 0.), vec2(20., 200.))
         on(platform::player_input)
@@ -408,7 +408,7 @@ fn main() {
             ball::plugin,
         ))
         .add_systems(Startup, (game_config::game_config.spawn(), setup).chain())
-        .add_systems(Update, draw_paddle_gizmos)
+        // .add_systems(Update, draw_paddle_gizmos)
         .insert_resource(InputConfig::from(HashMap::from([
             (KeyCode::KeyA, Action::P1MoveLeft),
             (KeyCode::KeyD, Action::P1MoveRight),
