@@ -16,6 +16,9 @@ mod game_config {
     pub struct PaddleSpeed(pub f32);
 
     #[derive(Clone, Copy, Debug, Default, Component)]
+    pub struct BallSpeed(pub f32);
+
+    #[derive(Clone, Copy, Debug, Default, Component)]
     /// Width and height of the arena
     pub struct ArenaSize(pub Vec2);
 
@@ -48,6 +51,27 @@ mod arena {
                 (x, y)
             ].into_iter().map(|(x, y)| vec2(x, y)))))
             MeshMaterial2d<ColorMaterial>(asset_value(Color::WHITE))
+        }
+    }
+}
+
+mod ball {
+    use bevy::prelude::*;
+
+    #[derive(Clone, Copy, Debug, Component, Default)]
+    #[require(Transform)]
+    pub struct Ball;
+
+    #[derive(Clone, Copy, Debug, Component, Default)]
+    pub struct BallVelocity(Vec2);
+
+    pub fn ball(radius: f32) -> impl Scene {
+        bsn! {
+            #Ball
+            Ball
+            Mesh2d(asset_value(Circle::new(radius)))
+            MeshMaterial2d<ColorMaterial>(asset_value(Color::WHITE))
+            BallVelocity(Vec2::splat(10.))
         }
     }
 }
