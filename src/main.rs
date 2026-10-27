@@ -59,6 +59,8 @@ mod arena {
 mod ball {
     use bevy::prelude::*;
 
+    use crate::game_config::ArenaSize;
+
     pub fn plugin(mut app: &mut App) {
         app.add_systems(FixedUpdate, move_ball);
     }
@@ -70,6 +72,12 @@ mod ball {
     #[derive(Clone, Copy, Debug, Component, Default)]
     pub struct BallVelocity(pub Vec2);
 
+    #[derive(Clone, Copy, Debug, Component, Default)]
+    pub struct BallRadius(pub Vec2);
+
+    #[derive(Clone, Copy, Debug, Event, Default)]
+    pub struct BallBounce;
+
     pub fn ball(radius: f32) -> impl Scene {
         bsn! {
             #Ball
@@ -77,13 +85,42 @@ mod ball {
             Mesh2d(asset_value(Circle::new(radius)))
             MeshMaterial2d<ColorMaterial>(asset_value(Color::WHITE))
             BallVelocity(Vec2::splat(10.))
+            BallRadius(Vec2::splat(10.))
         }
     }
 
-    fn move_ball(mut ball: Single<(&mut Transform, &mut BallVelocity)>) {
+    fn move_ball(mut ball: Single<(&mut Transform, &BallVelocity)>) {
         let (tr, vel) = &mut *ball;
         let BallVelocity(velocity) = &**vel;
         tr.translation += velocity.extend(0.);
+    }
+
+    fn detect_ball_bounce(
+        ball: Single<(&Transform, &BallVelocity, &BallRadius)>,
+        arena: Single<(&Transform, &ArenaSize)>,
+        mut commands: Commands,
+    ) {
+        let (
+            Transform {
+                translation: ball_pos,
+                ..
+            },
+            BallVelocity(ball_velocity),
+            BallRadius(ball_r),
+        ) = *ball;
+        let (
+            Transform {
+                translation: arena_pos,
+                ..
+            },
+            ArenaSize(arena_size),
+        ) = *arena;
+
+        if !Rect::from_center_half_size(arena_pos.xy(), arena_size - ball_r)
+            .contains(ball_pos.xy() + ball_velocity)
+        {
+            commands.trigger(BallBounce);
+        }
     }
 }
 
