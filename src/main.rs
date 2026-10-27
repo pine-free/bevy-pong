@@ -6,7 +6,7 @@ use crate::{
     ball::BallVelocity,
     game_config::ArenaSize,
     input::{Action, InputConfig},
-    platform::{Platform, Player1, Player2},
+    platform::{Platform, Player1, Player2, draw_paddle_gizmos},
 };
 
 mod game_config {
@@ -57,13 +57,16 @@ mod arena {
 }
 
 mod ball {
-    use bevy::prelude::*;
+    use bevy::{ecs::query::QueryData, prelude::*};
 
-    use crate::game_config::ArenaSize;
+    use crate::{game_config::ArenaSize, platform::PlatformDimensions};
 
     pub fn plugin(app: &mut App) {
-        app.add_systems(FixedUpdate, (detect_ball_bounce, move_ball).chain())
-            .add_observer(bounce_ball);
+        app.add_systems(
+            FixedUpdate,
+            (detect_ball_wallbounce, detect_ball_paddlebounce, move_ball).chain(),
+        )
+        .add_observer(bounce_ball);
     }
 
     #[derive(Clone, Copy, Debug, Component, Default)]
@@ -88,8 +91,11 @@ mod ball {
         }
     }
 
-    #[derive(Clone, Copy, Debug, Event, Default)]
-    pub struct BallBounce;
+    #[derive(Clone, Copy, Debug, Event)]
+    pub enum BallBounce {
+        FromWall,
+        FromPaddle,
+    }
 
     #[derive(QueryData)]
     #[query_data(derive(Debug))]
@@ -118,7 +124,7 @@ mod ball {
     }
 
     fn bounce_ball(
-        _: On<BallBounce>,
+        event: On<BallBounce>,
         mut ball: Single<(&mut BallVelocity, &BallRadius, &Transform)>,
         arena: Single<&ArenaSize>,
     ) {
@@ -135,23 +141,28 @@ mod ball {
             x: arena_w,
             y: arena_h,
         }) = *arena;
-        let wall_up =
-            Rect::from_corners(vec2(*arena_w, *arena_h), vec2(-arena_w, arena_h - ball_r));
-        let wall_down =
-            Rect::from_corners(vec2(*arena_w, -arena_h), vec2(-arena_w, -arena_h + ball_r));
-        let wall_right =
-            Rect::from_corners(vec2(*arena_w, *arena_h), vec2(arena_w - ball_r, -arena_h));
-        let wall_left =
-            Rect::from_corners(vec2(-arena_w, *arena_h), vec2(-arena_w + ball_r, -arena_h));
+        match event.event() {
+            BallBounce::FromWall => {
+                let wall_up =
+                    Rect::from_corners(vec2(*arena_w, *arena_h), vec2(-arena_w, arena_h - ball_r));
+                let wall_down =
+                    Rect::from_corners(vec2(*arena_w, -arena_h), vec2(-arena_w, -arena_h + ball_r));
+                let wall_right =
+                    Rect::from_corners(vec2(*arena_w, *arena_h), vec2(arena_w - ball_r, -arena_h));
+                let wall_left =
+                    Rect::from_corners(vec2(-arena_w, *arena_h), vec2(-arena_w + ball_r, -arena_h));
 
-        let next_ball_pos = ball_pos.xy() + vel.0.xy();
-        if wall_up.contains(next_ball_pos) || wall_down.contains(next_ball_pos) {
-            vel.0.y *= -1.;
-        }
+                let next_ball_pos = ball_pos.xy() + vel.0.xy();
+                if wall_up.contains(next_ball_pos) || wall_down.contains(next_ball_pos) {
+                    vel.0.y *= -1.;
+                }
 
-        if wall_left.contains(next_ball_pos) || wall_right.contains(next_ball_pos) {
-            vel.0.x *= -1.;
-        }
+                if wall_left.contains(next_ball_pos) || wall_right.contains(next_ball_pos) {
+                    vel.0.x *= -1.;
+                }
+            }
+            BallBounce::FromPaddle => vel.0.x *= -1.0,
+        };
     }
 
     fn detect_ball_wallbounce(
@@ -166,7 +177,32 @@ mod ball {
             .contains(ball.transform.translation.xy() + ball.velocity.0)
         {
             info_once!("ball bounced!");
-            commands.trigger(BallBounce);
+            commands.trigger(BallBounce::FromWall);
+        }
+    }
+
+    fn detect_ball_paddlebounce(
+        ball: Single<BallQuery>,
+        mut gizmos: Gizmos,
+        mut commands: Commands,
+        paddles: Populated<(&Transform, &PlatformDimensions)>,
+    ) {
+        for (paddle_tr, PlatformDimensions(paddle_dim)) in paddles {
+            let paddle_rect = Rect::from_center_size(Vec2::ZERO, *paddle_dim / 2.)
+                .translate(paddle_tr.translation.xy());
+            gizmos.rect_2d(
+                Isometry2d::from_translation(paddle_tr.translation.xy()),
+                *paddle_dim / 2.,
+                LinearRgba::GREEN,
+            );
+            if paddle_rect.contains(
+                ball.transform.translation.xy()
+                    + ball.velocity.0
+                    + ball.velocity.0.normalize() * ball.radius.0,
+            ) {
+                info!("paddlebounce!");
+                commands.trigger(BallBounce::FromPaddle);
+            }
         }
     }
 }
@@ -193,10 +229,11 @@ mod platform {
     pub struct PlatformDimensions(pub Vec2);
 
     pub fn platform(position: Vec2, dimensions: Vec2) -> impl Scene {
+        let dim = dimensions * 2.;
         bsn! {
             Platform
             Transform::from_translation(position.extend(0.0))
-            PlatformDimensions(dimensions)
+            PlatformDimensions(dim)
             Mesh2d(asset_value(Rectangle::from_size(dimensions)))
             MeshMaterial2d<ColorMaterial>(asset_value(ColorMaterial::from_color(Color::WHITE)))
         }
@@ -225,12 +262,25 @@ mod platform {
 
         if arena_size.is_some()
             && let ArenaSize(Vec2 { y: arena_h, .. }) = **arena_size.unwrap()
-            && next_translation.y.abs() + pl_height / 2. > arena_h
+            && next_translation.y.abs() + pl_height / 4. > arena_h
         {
             return;
         }
 
         self_pos.translation = next_translation;
+    }
+
+    pub fn draw_paddle_gizmos(
+        mut gizmos: Gizmos,
+        paddles: Populated<(&Transform, &PlatformDimensions)>,
+    ) {
+        for (p_tr, p_dim) in paddles {
+            gizmos.rect_2d(
+                Isometry2d::from_translation(p_tr.translation.xy()),
+                p_dim.0 / 2.,
+                LinearRgba::RED,
+            );
+        }
     }
 }
 
@@ -238,7 +288,6 @@ mod controls {
     use bevy::ecs::{entity::Entity, query::With, system::Single};
     use bevy::prelude::*;
 
-    use crate::game_config::ArenaSize;
     use crate::input::PlayerAction;
     use crate::platform::Player2;
     use crate::{input::TriggeredAction, platform::Player1};
@@ -350,12 +399,6 @@ fn setup(mut commands: Commands, arena_size: Single<&ArenaSize>) {
     info_once!("scene spawned!");
 }
 
-fn test_q(platforms: Query<Entity, With<Platform>>) {
-    for p in platforms {
-        info_once!("got platform {p:?}");
-    }
-}
-
 fn main() {
     App::new()
         .add_plugins((
@@ -365,7 +408,7 @@ fn main() {
             ball::plugin,
         ))
         .add_systems(Startup, (game_config::game_config.spawn(), setup).chain())
-        .add_systems(Update, test_q)
+        .add_systems(Update, draw_paddle_gizmos)
         .insert_resource(InputConfig::from(HashMap::from([
             (KeyCode::KeyA, Action::P1MoveLeft),
             (KeyCode::KeyD, Action::P1MoveRight),
