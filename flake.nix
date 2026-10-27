@@ -16,8 +16,12 @@
       ...
     }:
     flake-parts.lib.mkFlake { inherit inputs; } {
-      flake.overlays.default = import rust-overlay;
-      perSystem = { pkgs, ... }: {
+      systems = ["aarch64-darwin"];
+      perSystem = { system, pkgs, ... }: {
+        _module.args.pkgs = import inputs.nixpkgs {
+          inherit system;
+          overlays = [ (import rust-overlay) ];
+        };
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             pkg-config
