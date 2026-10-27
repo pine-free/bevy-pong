@@ -73,11 +73,32 @@ mod ball {
     #[derive(Clone, Copy, Debug, Component, Default)]
     pub struct BallVelocity(pub Vec2);
 
+    impl From<Vec2> for BallVelocity {
+        fn from(value: Vec2) -> Self {
+            Self(value)
+        }
+    }
+
     #[derive(Clone, Copy, Debug, Component, Default)]
     pub struct BallRadius(pub f32);
 
+    impl From<f32> for BallRadius {
+        fn from(value: f32) -> Self {
+            Self(value)
+        }
+    }
+
     #[derive(Clone, Copy, Debug, Event, Default)]
     pub struct BallBounce;
+
+    #[derive(QueryData)]
+    #[query_data(derive(Debug))]
+    pub struct BallQuery {
+        entity: Entity,
+        transform: &'static Transform,
+        velocity: &'static BallVelocity,
+        radius: &'static BallRadius,
+    }
 
     pub fn ball(radius: f32) -> impl Scene {
         bsn! {
@@ -133,23 +154,16 @@ mod ball {
         }
     }
 
-    fn detect_ball_bounce(
-        ball: Single<(&Transform, &BallVelocity, &BallRadius)>,
+    fn detect_ball_wallbounce(
+        ball: Single<BallQuery>,
         arena: Single<&ArenaSize>,
         mut commands: Commands,
     ) {
-        let (
-            Transform {
-                translation: ball_pos,
-                ..
-            },
-            BallVelocity(ball_velocity),
-            BallRadius(ball_r),
-        ) = *ball;
         let ArenaSize(arena_size) = *arena;
 
-        if !Rect::from_center_half_size(Vec2::ZERO, arena_size - ball_r)
-            .contains(ball_pos.xy() + ball_velocity)
+        // Bouncing from walls
+        if !Rect::from_center_half_size(Vec2::ZERO, arena_size - Vec2::splat(ball.radius.0))
+            .contains(ball.transform.translation.xy() + ball.velocity.0)
         {
             info_once!("ball bounced!");
             commands.trigger(BallBounce);
