@@ -61,8 +61,9 @@ mod ball {
 
     use crate::game_config::ArenaSize;
 
-    pub fn plugin(mut app: &mut App) {
-        app.add_systems(FixedUpdate, move_ball);
+    pub fn plugin(app: &mut App) {
+        app.add_systems(FixedUpdate, (detect_ball_bounce, move_ball).chain())
+            .add_observer(bounce_ball);
     }
 
     #[derive(Clone, Copy, Debug, Component, Default)]
@@ -73,7 +74,7 @@ mod ball {
     pub struct BallVelocity(pub Vec2);
 
     #[derive(Clone, Copy, Debug, Component, Default)]
-    pub struct BallRadius(pub Vec2);
+    pub struct BallRadius(pub f32);
 
     #[derive(Clone, Copy, Debug, Event, Default)]
     pub struct BallBounce;
@@ -85,7 +86,7 @@ mod ball {
             Mesh2d(asset_value(Circle::new(radius)))
             MeshMaterial2d<ColorMaterial>(asset_value(Color::WHITE))
             BallVelocity(Vec2::splat(10.))
-            BallRadius(Vec2::splat(10.))
+            BallRadius(10.)
         }
     }
 
@@ -95,9 +96,46 @@ mod ball {
         tr.translation += velocity.extend(0.);
     }
 
+    fn bounce_ball(
+        _: On<BallBounce>,
+        mut ball: Single<(&mut BallVelocity, &BallRadius, &Transform)>,
+        arena: Single<&ArenaSize>,
+    ) {
+        info_once!("ball bounce detected!");
+        let (
+            vel,
+            BallRadius(ball_r),
+            Transform {
+                translation: ball_pos,
+                ..
+            },
+        ) = &mut *ball;
+        let ArenaSize(Vec2 {
+            x: arena_w,
+            y: arena_h,
+        }) = *arena;
+        let wall_up =
+            Rect::from_corners(vec2(*arena_w, *arena_h), vec2(-arena_w, arena_h - ball_r));
+        let wall_down =
+            Rect::from_corners(vec2(*arena_w, -arena_h), vec2(-arena_w, -arena_h + ball_r));
+        let wall_right =
+            Rect::from_corners(vec2(*arena_w, *arena_h), vec2(arena_w - ball_r, -arena_h));
+        let wall_left =
+            Rect::from_corners(vec2(-arena_w, *arena_h), vec2(-arena_w + ball_r, -arena_h));
+
+        let next_ball_pos = ball_pos.xy() + vel.0.xy();
+        if wall_up.contains(next_ball_pos) || wall_down.contains(next_ball_pos) {
+            vel.0.y *= -1.;
+        }
+
+        if wall_left.contains(next_ball_pos) || wall_right.contains(next_ball_pos) {
+            vel.0.x *= -1.;
+        }
+    }
+
     fn detect_ball_bounce(
         ball: Single<(&Transform, &BallVelocity, &BallRadius)>,
-        arena: Single<(&Transform, &ArenaSize)>,
+        arena: Single<&ArenaSize>,
         mut commands: Commands,
     ) {
         let (
@@ -108,17 +146,12 @@ mod ball {
             BallVelocity(ball_velocity),
             BallRadius(ball_r),
         ) = *ball;
-        let (
-            Transform {
-                translation: arena_pos,
-                ..
-            },
-            ArenaSize(arena_size),
-        ) = *arena;
+        let ArenaSize(arena_size) = *arena;
 
-        if !Rect::from_center_half_size(arena_pos.xy(), arena_size - ball_r)
+        if !Rect::from_center_half_size(Vec2::ZERO, arena_size - ball_r)
             .contains(ball_pos.xy() + ball_velocity)
         {
+            info_once!("ball bounced!");
             commands.trigger(BallBounce);
         }
     }
