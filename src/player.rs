@@ -5,9 +5,22 @@ use crate::{
     input::{Action, PlayerAction},
 };
 
+pub fn plugin(app: &mut App) {
+    app.add_observer(increase_player_score);
+}
+
 #[derive(Clone, Copy, Debug, Component, Default)]
 #[require(Transform)]
 pub struct Paddle;
+
+#[derive(Clone, Copy, Debug, Component, Default)]
+pub struct PlayerScore(u32);
+
+#[derive(Clone, Copy, Debug, Event)]
+pub enum IncreasePlayerScore {
+    Player1,
+    Player2,
+}
 
 #[derive(Clone, Copy, Debug, Component, Default)]
 pub struct Player1;
@@ -26,6 +39,7 @@ pub fn platform(position: Vec2, dimensions: Vec2) -> impl Scene {
         PaddleDimensions(dim)
         Mesh2d(asset_value(Rectangle::from_size(dimensions)))
         MeshMaterial2d<ColorMaterial>(asset_value(ColorMaterial::from_color(Color::WHITE)))
+        PlayerScore
     }
 }
 
@@ -58,6 +72,19 @@ pub fn player_input(
     }
 
     self_pos.translation = next_translation;
+}
+
+pub fn increase_player_score(
+    event: On<IncreasePlayerScore>,
+    mut player1: Single<&mut PlayerScore, With<Player1>>,
+    mut player2: Single<&mut PlayerScore, (With<Player2>, Without<Player1>)>,
+) {
+    match event.event() {
+        IncreasePlayerScore::Player1 => player1.0 += 1,
+        IncreasePlayerScore::Player2 => player2.0 += 1,
+    }
+
+    info!("score: {} {}", player1.0, player2.0);
 }
 
 pub fn draw_paddle_gizmos(mut gizmos: Gizmos, paddles: Populated<(&Transform, &PaddleDimensions)>) {

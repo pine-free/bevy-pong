@@ -1,6 +1,9 @@
 use bevy::{ecs::query::QueryData, prelude::*};
 
-use crate::{game_config::ArenaSize, player::PaddleDimensions};
+use crate::{
+    game_config::ArenaSize,
+    player::{IncreasePlayerScore, PaddleDimensions},
+};
 
 pub fn plugin(app: &mut App) {
     app.add_systems(
@@ -66,6 +69,7 @@ fn move_ball(mut ball: Single<(&mut Transform, &BallVelocity)>) {
 
 fn bounce_ball(
     event: On<BallBounce>,
+    mut commands: Commands,
     mut ball: Single<(&mut BallVelocity, &BallRadius, &Transform)>,
     arena: Single<&ArenaSize>,
 ) {
@@ -93,13 +97,26 @@ fn bounce_ball(
             let wall_left =
                 Rect::from_corners(vec2(-arena_w, *arena_h), vec2(-arena_w + ball_r, -arena_h));
 
+            let walls = vec![wall_up, wall_down, wall_left, wall_right];
             let next_ball_pos = ball_pos.xy() + vel.0.xy();
-            if wall_up.contains(next_ball_pos) || wall_down.contains(next_ball_pos) {
-                vel.0.y *= -1.;
-            }
+            let hit_wall = {
+                let v = walls
+                    .iter()
+                    .filter(|w| w.contains(next_ball_pos))
+                    .take(1)
+                    .collect::<Vec<_>>();
+                v.first().cloned().expect("definitely hit some wall")
+            };
 
-            if wall_left.contains(next_ball_pos) || wall_right.contains(next_ball_pos) {
+            if hit_wall == &wall_up || hit_wall == &wall_down {
+                vel.0.y *= -1.;
+            } else if hit_wall == &wall_left || hit_wall == &wall_right {
                 vel.0.x *= -1.;
+                if hit_wall == &wall_left {
+                    commands.trigger(IncreasePlayerScore::Player2);
+                } else if hit_wall == &wall_right {
+                    commands.trigger(IncreasePlayerScore::Player1);
+                }
             }
         }
         BallBounce::FromPaddle => vel.0.x *= -1.0,

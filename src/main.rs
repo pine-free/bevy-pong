@@ -57,6 +57,7 @@ fn main() {
             input::plugin,
             controls::plugin,
             ball::plugin,
+            player::plugin,
         ))
         .add_systems(Startup, (game_config::game_config.spawn(), setup).chain())
         // .add_systems(Update, draw_paddle_gizmos)
