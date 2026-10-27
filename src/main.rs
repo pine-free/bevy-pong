@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 
 use crate::{
+    ball::BallVelocity,
     game_config::ArenaSize,
     input::{Action, InputConfig},
     platform::{Platform, Player1, Player2},
@@ -58,12 +59,16 @@ mod arena {
 mod ball {
     use bevy::prelude::*;
 
+    pub fn plugin(mut app: &mut App) {
+        app.add_systems(FixedUpdate, move_ball);
+    }
+
     #[derive(Clone, Copy, Debug, Component, Default)]
     #[require(Transform)]
     pub struct Ball;
 
     #[derive(Clone, Copy, Debug, Component, Default)]
-    pub struct BallVelocity(Vec2);
+    pub struct BallVelocity(pub Vec2);
 
     pub fn ball(radius: f32) -> impl Scene {
         bsn! {
@@ -73,6 +78,12 @@ mod ball {
             MeshMaterial2d<ColorMaterial>(asset_value(Color::WHITE))
             BallVelocity(Vec2::splat(10.))
         }
+    }
+
+    fn move_ball(mut ball: Single<(&mut Transform, &mut BallVelocity)>) {
+        let (tr, vel) = &mut *ball;
+        let BallVelocity(velocity) = &**vel;
+        tr.translation += velocity.extend(0.);
     }
 }
 
@@ -246,6 +257,10 @@ fn setup(mut commands: Commands, arena_size: Single<&ArenaSize>) {
         --
         #Arena
         @arena::arena(**arena_size)
+        --
+        #Ball
+        @ball::ball(10.)
+        BallVelocity(vec2(5., 5.))
 
     });
     info_once!("scene spawned!");
@@ -259,7 +274,12 @@ fn test_q(platforms: Query<Entity, With<Platform>>) {
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, input::plugin, controls::plugin))
+        .add_plugins((
+            DefaultPlugins,
+            input::plugin,
+            controls::plugin,
+            ball::plugin,
+        ))
         .add_systems(Startup, (game_config::game_config.spawn(), setup).chain())
         .add_systems(Update, test_q)
         .insert_resource(InputConfig::from(HashMap::from([
